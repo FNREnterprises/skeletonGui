@@ -1552,7 +1552,7 @@ QSlider::sub-page:qlineargradient {background: lightgray;}</string>
      <rect>
       <x>740</x>
       <y>190</y>
-      <width>71</width>
+      <width>181</width>
       <height>16</height>
      </rect>
     </property>
@@ -2080,8 +2080,8 @@ QSlider::sub-page:qlineargradient {background: lightgray;}</string>
     </property>
     <property name="geometry">
      <rect>
-      <x>830</x>
-      <y>190</y>
+      <x>740</x>
+      <y>210</y>
       <width>41</width>
       <height>16</height>
      </rect>
@@ -2097,7 +2097,7 @@ QSlider::sub-page:qlineargradient {background: lightgray;}</string>
     <property name="geometry">
      <rect>
       <x>740</x>
-      <y>210</y>
+      <y>230</y>
       <width>231</width>
       <height>16</height>
      </rect>
@@ -2110,28 +2110,6 @@ QSlider::sub-page:qlineargradient {background: lightgray;}</string>
     </property>
     <property name="text">
      <string>Arduino-&gt;Terminal: </string>
-    </property>
-   </widget>
-   <widget class="QLabel" name="Terminal">
-    <property name="enabled">
-     <bool>false</bool>
-    </property>
-    <property name="geometry">
-     <rect>
-      <x>740</x>
-      <y>230</y>
-      <width>111</width>
-      <height>16</height>
-     </rect>
-    </property>
-    <property name="toolTip">
-     <string>terminal slot number</string>
-    </property>
-    <property name="toolTipDuration">
-     <number>2</number>
-    </property>
-    <property name="text">
-     <string>Terminal:</string>
     </property>
    </widget>
    <widget class="QLabel" name="CableTerminalServo">
@@ -2319,7 +2297,7 @@ QSlider::sub-page:qlineargradient {background: lightgray;}</string>
      <rect>
       <x>500</x>
       <y>250</y>
-      <width>81</width>
+      <width>151</width>
       <height>16</height>
      </rect>
     </property>
@@ -2339,8 +2317,8 @@ QSlider::sub-page:qlineargradient {background: lightgray;}</string>
     </property>
     <property name="geometry">
      <rect>
-      <x>880</x>
-      <y>190</y>
+      <x>820</x>
+      <y>210</y>
       <width>71</width>
       <height>16</height>
      </rect>
@@ -2512,7 +2490,6 @@ Servos</string>
    <zorder>DurationSlider</zorder>
    <zorder>Pin</zorder>
    <zorder>CableArduinoTerminal</zorder>
-   <zorder>Terminal</zorder>
    <zorder>CableTerminalServo</zorder>
    <zorder>AutoDetachValue</zorder>
    <zorder>restAll</zorder>

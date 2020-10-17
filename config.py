@@ -5,12 +5,19 @@ import queue
 
 import marvinglobal.marvinglobal as mg
 
+processName = 'skeletonGui'
 
 md = None   # shared data
+sc = None   # servo commands
+
+REST_MOVE_DURATION = 500
 
 servoNameByArduinoAndPin = {}   # a list to access servos by Arduino and Id
 
 simulateServoMoves = False
+
+isFaceTrackingActive = False
+randomMovesActive = False
 
 guiUpdateQueue = queue.Queue(200)  # deque(maxlen=None) dequeue is not thread safe
 

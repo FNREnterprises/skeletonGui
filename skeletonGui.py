@@ -17,6 +17,8 @@ if __name__ == "__main__":
     if not config.md.connect():
         os._exit(1)
 
+    config.sc = mg.ServoCommands()
+
     # add own process to shared process list
     config.md.updateProcessDict(config.processName)
 

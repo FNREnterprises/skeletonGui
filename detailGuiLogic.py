@@ -42,7 +42,7 @@ class detailGui(QtWidgets.QDialog, detailQtGui.Ui_ServoDetails):
         servoTypeList = []
 
         # populate drop down with servoTypes
-        for t in config.md.servoTypeDict:
+        for t in config.md.servoTypeDict.keys():
             self.ServoType.addItem(t)
         index = self.ServoType.findText(servoStatic.servoType, QtCore.Qt.MatchFixedString)
         self.ServoType.setCurrentIndex(index)
@@ -87,17 +87,13 @@ class detailGui(QtWidgets.QDialog, detailQtGui.Ui_ServoDetails):
         servoStatic.wireColorArduinoTerminal = self.CableArduinoTerminal.text()
         servoStatic.wireColorTerminalServo = self.CableTerminalServo.text()
 
-        #config.servoStaticDict[self.servoName] = servoStatic
-        #config.marvinShares.updateServoStaticDict(self.servoName, servoStatic)
+        config.marvinShares.updateServoStaticDict(self.servoName, servoStatic)
 
         # update derived servo values too
-        servoDerived = config.md.servoDerivedDict.get(self.servoName)
-        #config.marvinShares.updateServoDerivedDict(self.servoName, servoStatic)
+        #servoDerived = config.ServoDerived(self.servoName)
         #config.servoDerivedDict.update({self.servoName: servoDerived})
 
         # update arduino too
-        config.sc.assign(config.md.servoRequestQueue,  self.servoName, config.getPersistedServoPosition(self.servoName))
-
         #arduinoSend.servoAssign(self.servoName, config.getPersistedServoPosition(self.servoName))
         config.log(f"updated servo definitions for {self.servoName}")
         #config.saveServoStaticDict()

@@ -2,14 +2,15 @@
 
 import os
 
-from PyQt5.QtCore import pyqtSlot, QThreadPool, QRunnable
+from PyQt5.QtCore import pyqtSlot, QThreadPool
 from PyQt5 import uic, QtWidgets
-from PyQt5.QtWidgets import QApplication, QMainWindow, QFileDialog
+from PyQt5.QtWidgets import QMainWindow, QFileDialog
 
 import config
 import marvinglobal.marvinglobal as mg
 import servoGuiUpdate
-import servoDefinitionGui
+#import servoDefinitionGui
+import detailGuiLogic
 
 
 sliderInMove = None
@@ -24,7 +25,7 @@ def getValueFunctionFromFunctionName(functionNameParts):
     sliderGetValueFunction = f"self.{functionNameParts[1]}_{functionNameParts[2]}.value()"
     return sliderGetValueFunction
 
-
+''' 14.10.2020 jm should be obsolete with shared servo data
 def addValueChangedFunctionToClass(functionName, cls):
     """
     add a dynamically named function to the class
@@ -48,7 +49,7 @@ def addValueChangedFunctionToClass(functionName, cls):
 
     # add the function to the class
     setattr(cls, functionName, fn)
-
+'''
 
 def addSliderReleasedFunctionToClass(functionName, cls):
     """
@@ -104,7 +105,7 @@ class SkeletonGui(QMainWindow):
         # for all servo sliders below the buttons
         for servoName in config.md.servoStaticDict.keys():
             sliderName = servoName.replace('.', '_') + 'Slider'
-            addValueChangedFunctionToClass(f'on_{sliderName}_valueChanged', SkeletonGui)
+            #addValueChangedFunctionToClass(f'on_{sliderName}_valueChanged', SkeletonGui)
             addSliderReleasedFunctionToClass(f'on_{sliderName}_sliderReleased', SkeletonGui)
 
         self.servoNameFormat = "<html><head/><body><p align=\"center\"><span style=\" font-size:10pt;\">ServoName</span></p></body></html>"
@@ -122,7 +123,17 @@ class SkeletonGui(QMainWindow):
 
         self.threadpool.start(servoUpdateThread)
 
-#        gesturePlay = i01.GesturePlay()
+        # update arduino and servo state
+        config.md.guiUpdateQueue.put({'type': 'dummy'})  # first message gets lost somehow
+        for arduinoIndex, arduinoData in config.md.arduinoDict.items():
+            info = {'type': 'arduinoUpdate', 'arduino': arduinoIndex, 'connected': arduinoData['connected']}
+            config.log(f"request arduino update in gui: {info}")
+            config.md.guiUpdateQueue.put(info)
+
+        for servoName in config.md.servoStaticDict.keys():
+            config.md.guiUpdateQueue.put({'type': 'servoUpdate', 'servoName': servoName})
+
+        #        gesturePlay = i01.GesturePlay()
 #        self.threadpool.start(gesturePlay)
 
 #        i01.mouth.speakBlocking("ich bin jetzt bereit")
@@ -142,7 +153,8 @@ class SkeletonGui(QMainWindow):
         config.log(f"specialFunction selected {text}")
 
         if text == "capture reference face":
-            success = eyeCamFunctions.newFaceRecording()
+            #success = eyeCamFunctions.newFaceRecording()
+            config.md.imageProcessingQueue.put('newFaceRecording')
 
 
     @classmethod
@@ -325,9 +337,10 @@ class SkeletonGui(QMainWindow):
 
     def on_stopServo_clicked(self):
         #rpcSend.requestServoStop(self.selectedServoName)
-        arduinoSend.requestServoStop(self.selectedServoName)
-        if config.swipingServoName is not None:
-            self.stopSwiping()
+        config.sc.stop(config.md.servoRequestQueue, self.selectedServoName)
+        #arduinoSend.requestServoStop(self.selectedServoName)
+        #if config.swipingServoName is not None:
+        #    self.stopSwiping()
 
 
     def on_MoveServo_pressed(self):
@@ -337,18 +350,20 @@ class SkeletonGui(QMainWindow):
             position = self.RequestPositionSlider.value()
             duration = self.DurationSlider.value()
             config.log(f"requestServoPos, servoName: {self.selectedServoName}, position: {position}, duration: {duration}")
-            arduinoSend.requestServoPosition(self.selectedServoName, position, duration)
+            #arduinoSend.requestServoPosition(self.selectedServoName, position, duration)
+            config.sc.positionServo(config.md.servoRequestQueue, self.selectedServoName, position, duration)
 
         else:
             config.log(f"requestServoStop, servoName: {self.selectedServoName}")
-            arduinoSend.requestServoStop(self.selectedServoName)
+            #arduinoSend.requestServoStop(self.selectedServoName)
+            config.sc.stop(config.md.servoRequestQueue, self.selectedServoName)
             self.MoveServo.setText("Move")
 
 
     def on_Modify_pressed(self):
 
         # open detail dialog
-        dialog = QtWidgets.QDialog()
+        _ = QtWidgets.QDialog()
         dialog = detailGuiLogic.detailGui()
         dialog.initUI(self.selectedServoName)
         dialog.exec_()
@@ -359,11 +374,12 @@ class SkeletonGui(QMainWindow):
 
 
     def on_Rest_pressed(self):
-        servoStatic: config.ServoStatic = config.servoStaticDict[self.selectedServoName]
+        servoStatic: mg.ServoStatic = config.md.servoStaticDict[self.selectedServoName]
         degrees = servoStatic.restDeg
         position = config.evalPosFromDeg(self.selectedServoName, degrees)
         config.log(f"requestRestPosition, servoName: {self.selectedServoName}, degrees: {degrees}, pos: {position}")
-        arduinoSend.requestServoPosition(self.selectedServoName, position, config.REST_MOVE_DURATION)
+        #arduinoSend.requestServoPosition(self.selectedServoName, position, config.REST_MOVE_DURATION)
+        config.sc.positionServo(config.md.servoRequestQueue, self.selectedServoName, position, config.REST_MOVE_DURATION)
         # set request position slider
         self.RequestPositionSlider.setValue(round(position))
 
@@ -381,106 +397,98 @@ class SkeletonGui(QMainWindow):
 
 
     def on_SwipeServo_pressed(self):
-        config.swipingServoName = self.selectedServoName
+        #config.swipingServoName = self.selectedServoName
         if self.SwipeServo.text() == "Swipe":
             config.log(f"start swipe for {self.selectedServoName}")
             self.adjustGuiForSwipingStart()
-            minPos = config.servoStaticDict[self.selectedServoName].minPos
-            config.swipingServoName=self.selectedServoName
-            config.swipeDuration = config.SWIPE_MOVE_DURATION
-            arduinoSend.requestServoPosition(config.swipingServoName, minPos, config.swipeDuration)
-            # continuation of swipe is handled with the end move message in arduinoReceive
-            # swiping stop is triggered by button or servo stop/rest request
+            config.sc.startSwipe(config.md.servoRequestQueue, self.selectedServoName)
 
         else:
-            config.log(f"stop swipe for {config.swipingServoName}")
-            self.stopSwiping()
-
+            config.log(f"stop swipe for {self.selectedServoName}")
+            config.sc.stopSwipe(config.md.servoRequestQueue, self.selectedServoName)
+            self.adjustGuiForSwipingEnd()
 
     def stopSwiping(self):
         '''
-        swiping is initialized through the gui by setting config.swipingServoName and
-        moving servo to the min position
         swiping stop can be requested trough the gui but also by stopping/rest requesting
         for a single or all servos
         swiping continuation is handled in arduino receive when a movement is finished and
-        swipingServoName is not None
-        :return:
+        servoCurrent.swiping is True
+        More then one servo might be in swiping mode
         '''
-        if config.swipingServoName is None:
-            config.log(f"stop swiping called but swiping is not active")
-            return
-
-        servoStatic: config.ServoStatic = config.servoStaticDict[config.swipingServoName]
-        restPos = config.evalPosFromDeg(config.swipingServoName, servoStatic.restDeg)
-        arduinoSend.requestServoPosition(config.swipingServoName, restPos, config.SWIPE_MOVE_DURATION)
-        config.swipingServoName = None
-        self.RequestPositionSlider.setValue(restPos)
-        self.adjustGuiForSwipingEnd()
+        for servoName, servoCurrent in config.md.servoCurrentDict.items():
+            if servoCurrent.swiping:
+                config.sc.stopSwipe(config.md.servoRequestQueue, servoName)
+                if servoName == self.selectedServoName:
+                    self.adjustGuiForSwipingEnd()
 
 
     def on_Verbose_stateChanged(self):
         verboseOn = self.Verbose.isChecked()
 
         config.log(f"requestSetVerbose, servoName: {self.selectedServoName}, verboseOn: {verboseOn}")
-        arduinoSend.setVerbose(self.selectedServoName, verboseOn)
+        #arduinoSend.setVerbose(self.selectedServoName, verboseOn)
+        config.sc.setVerbose(config.md.servoRequestQueue, self.selectedServoName, verboseOn)
 
 
     def stopSelfRunningActivities(self):
-        if config.swipingServoName is not None:
-            self.stopSwiping()
-        if config.randomMovesActive:
-            config.setRandomMovesActive(False)
-        if config.gestureRunning:
-            config.gestureRunning = False
-        arduinoSend.requestAllServosStop()
+        config.sc.stopRandomMoves(config.md.servoRequestQueue)
+        config.sc.stopGesture(config.md.servoRequestQueue)
+        config.sc.allServoStop(config.md.servoRequestQueue)
 
 
     def on_randomMoves_pressed(self):
         config.log(f"on_randomMoves_pressed")
 
         if not config.randomMovesActive:
+            config.sc.startRandomMoves(config.md.servoRequestQueue)
+            config.randomMovesActive = True
+            '''
             self.stopSelfRunningActivities()
             randomMove = randomMoves.RandomMoves()
-            config.randomMovesActive = True
             self.threadpool.start(randomMove)      # calls run method of randomMoves.py
 
             self.randomMoves.setStyleSheet("background-color: green; color: white;")
             i01.mouth.speakBlocking("zufallsbewegungen aktiviert")
-
+            '''
         else:
             config.randomMovesActive = False    # this stops the thread
-            arduinoSend.requestAllServosRest()
+            config.sc.stopRandomMoves(config.md.servoRequestQueue)
+
+            #arduinoSend.requestAllServosRest()
+            #config.sc.allServoRest(config.md.servoRequestQueue)
             self.randomMoves.setStyleSheet("background-color: lightGray; color: black;")
-            i01.mouth.speakBlocking("zufallsbewegungen beendet")
+            #i01.mouth.speakBlocking("zufallsbewegungen beendet")
 
 
     def on_locateFaces_pressed(self):
 
-        config.log(f"on_locateFaces_pressed, isFaceTrackingActive: {eyeCamFunctions.isFaceTrackingActive}")
-        if not eyeCamFunctions.isFaceTrackingActive:
+        config.log(f"on_locateFaces_pressed, isFaceTrackingActive: {config.isFaceTrackingActive}")
+        if not config.isFaceTrackingActive:
 
-            eyeCamFunctions.isFaceTrackingActive = True
-
-            config.log(f"start face tracking and face recognition")
-            faceTracking = eyeCamFunctions.FaceTracking()
+            config.md.imageProcessingQueue.put('startFaceTracking')
+            config.isFaceTrackingActive = True
+            config.log(f"face tracking and face recognition started")
+            #faceTracking = eyeCamFunctions.FaceTracking()
             #faceRecognition = eyeCamFunctions.FaceRecognition(faceTracking)
-            recognizeFaces = eyeCamFunctions.RecognizeFaces(faceTracking)
+            #recognizeFaces = eyeCamFunctions.RecognizeFaces(faceTracking)
 
-            self.threadpool.start(faceTracking)
-            self.threadpool.start(recognizeFaces)
+            #self.threadpool.start(faceTracking)
+            #self.threadpool.start(recognizeFaces)
 
             # increase autoDetach time to speed up eye movement during scan
-            arduinoSend.setAutoDetach('head.eyeX', 5000)
+            #arduinoSend.setAutoDetach('head.eyeX', 5000)
+            config.sc.setAutoDetach(config.md.servoRequestQueue, 'head.eyeX', 5000)
 
             self.locateFaces.setStyleSheet("background-color: green; color: white;")
-            i01.mouth.speakBlocking("gesichtsverfolgung aktiviert")
+            #i01.mouth.speakBlocking("gesichtsverfolgung aktiviert")
 
         else:
+            config.md.imageProcessingQueue.put('stopFaceTracking')
+            config.isFaceTrackingActive = False
+            config.log(f"face tracking and face recognition stopped")
+            config.sc.setAutoDetach(config.md.servoRequestQueue, 'head.eyeX', 500)
             self.locateFaces.setStyleSheet("background-color: lightGray; color: black;")
-            config.log("stop face tracking")
-
-            eyeCamFunctions.stopFaceTracking()
 
 
     def on_stopAllServos_pressed(self):
@@ -489,7 +497,8 @@ class SkeletonGui(QMainWindow):
 
     def on_restAll_pressed(self):
         self.stopSelfRunningActivities()
-        arduinoSend.requestAllServosRest()
+        #arduinoSend.requestAllServosRest()
+        config.sc.allServoRest(config.md.servoRequestQueue)
 
 
     def on_playGesture_pressed(self):
@@ -509,7 +518,7 @@ class SkeletonGui(QMainWindow):
 
     def on_RequestPositionSlider_sliderReleased(self):
         # position needs to be in range min/max
-        servoStatic: config.ServoStatic = config.servoStaticDict[self.selectedServoName]
+        servoStatic: mg.ServoStatic = config.md.servoStaticDict.get(self.selectedServoName)
         if self.RequestPositionSlider.value() < servoStatic.minPos:
             self.RequestPositionSlider.setValue(servoStatic.minPos)
         if self.RequestPositionSlider.value() > servoStatic.maxPos:
@@ -518,9 +527,13 @@ class SkeletonGui(QMainWindow):
         #deg = config.rangeMap(self.RequestPositionSlider.value(),
         #                      self.selectedServo.minPos, self.selectedServo.maxPos,
         #                      self.selectedServo.minDeg, self.selectedServo.maxDeg)
-        deg = config.evalDegFromPos(self.selectedServoName, self.RequestPositionSlider.value())
+        servoStatic = config.md.servoStaticDict.get(self.selectedServoName)
+        servoDerived = config.md.servoDerivedDict.get(self.selectedServoName)
+        degrees = mg.evalDegFromPos(servoStatic, servoDerived, self.RequestPositionSlider.value())
+
+        #deg = config.evalDegFromPos(self.selectedServoName, self.RequestPositionSlider.value())
         self.RequestPosition.setText(str(self.RequestPositionSlider.value()))
-        self.RequestDegree.setText(str(deg))
+        self.RequestDegree.setText(str(degrees))
 
 
     def on_RequestPositionSlider_valueChanged(self):
@@ -531,9 +544,11 @@ class SkeletonGui(QMainWindow):
         #deg = config.rangeMap(self.RequestPositionSlider.value(),
         #                           self.selectedServo.minPos, self.selectedServo.maxPos,
         #                           self.selectedServo.minDeg, self.selectedServo.maxDeg)
-        deg = config.evalDegFromPos(self.selectedServoName, self.RequestPositionSlider.value())
+        servoStatic = config.md.servoStaticDict.get(self.selectedServoName)
+        servoDerived = config.md.servoDerivedDict.get(self.selectedServoName)
+        degrees = mg.evalDegFromPos(servoStatic, servoDerived, self.RequestPositionSlider.value())
         self.RequestPosition.setText(str(self.RequestPositionSlider.value()))
-        self.RequestDegree.setText(str(deg))
+        self.RequestDegree.setText(str(degrees))
 
 
     def on_DurationSlider_sliderMoved(self):
@@ -554,21 +569,21 @@ class SkeletonGui(QMainWindow):
 
     def setServoGuiValues(self, servoName: str):
 
-        servoStatic: config.ServoStatic = config.servoStaticDict[servoName]
-        servoDerived = config.servoDerivedDict[servoName]
-        servoType = config.servoTypeDict[servoStatic.servoType]
+        servoStatic: mg.ServoStatic = config.md.servoStaticDict.get(servoName)
+        servoDerived = config.md.servoDerivedDict.get(servoName)
+        servoType = config.md.servoTypeDict.get(servoStatic.servoType)
 
         formattedServoName = self.servoNameFormat.replace("ServoName", servoName)
         self.ServoName.setText(formattedServoName)
         self.ServoName.setStyleSheet("background-color: green; color: white;")
 
         arduinoIndex = servoStatic.arduino
-        self.Arduino.setText(f"Arduino: {config.arduinoData[arduinoIndex]['arduinoName']}")
+        self.Arduino.setText(f"Arduino: {config.md.arduinoDict.get(arduinoIndex)['arduinoName']}")
         self.Pin.setText(f"Pin: {servoStatic.pin}")
         self.Power.setText(f"Power: {servoStatic.powerPin}")
-        self.CableArduinoTerminal.setText(f"Arduino->Terminal: {servoStatic.wireColorArduinoTerminal}")
-        self.Terminal.setText(f"Terminal: {servoStatic.cableTerminal}")
-        self.CableTerminalServo.setText(f"Terminal->Servo: {servoStatic.wireColorTerminalServo}")
+        self.CableArduinoTerminal.setText(f"Arduino->Terminal({servoStatic.cableTerminal}): {servoStatic.wireColorArduinoTerminal}")
+        #self.Terminal.setText(f"Terminal: {servoStatic.cableTerminal}")
+        self.CableTerminalServo.setText(f"Terminal({servoStatic.cableTerminal})->Servo: {servoStatic.wireColorTerminalServo}")
         self.AutoDetach.setChecked(servoStatic.autoDetach > 0)
         self.AutoDetachValue.setValue(servoStatic.autoDetach)
         self.Inverted.setChecked(servoStatic.inverted)
@@ -602,13 +617,22 @@ class SkeletonGui(QMainWindow):
         h = self.degRange.geometry().height()
         self.degRange.setGeometry(x,y,w,h)
 
-        self.MoveServo.setEnabled(True)
-        self.Modify.setEnabled(True)
-        self.Rest.setEnabled(True)
-        self.SwipeServo.setEnabled(True)
-        self.Verbose.setEnabled(True)
+        servoCurrent = config.md.servoCurrentDict.get(servoName)
 
-        curr = config.servoCurrentDict[servoName]
+        if servoCurrent.swiping:
+            self.MoveServo.setEnabled(False)
+            self.Modify.setEnabled(False)
+            self.Rest.setEnabled(False)
+            self.SwipeServo.setText("Stop Swipe")
+            self.SwipeServo.setEnabled(True)
+        else:
+            self.MoveServo.setEnabled(True)
+            self.Modify.setEnabled(True)
+            self.Rest.setEnabled(True)
+            self.SwipeServo.setText("Swipe")
+            self.SwipeServo.setEnabled(True)
+
+        self.Verbose.setEnabled(True)
 
         self.RequestPositionMinLabel.setText(str(servoStatic.minPos))
         self.RequestPositionMaxLabel.setText(str(servoStatic.maxPos))
@@ -622,11 +646,11 @@ class SkeletonGui(QMainWindow):
         self.DurationSlider.setEnabled(True)
         self.Duration.setText(str(self.DurationSlider.value()))
 
-        position = round(curr.position)
+        position = round(servoCurrent.position)
         self.RequestPosition.setText(str(position))
-        self.RequestPositionSlider.setValue(round(curr.position))
+        self.RequestPositionSlider.setValue(round(servoCurrent.position))
 
-        degree = round(curr.degrees)
+        degree = round(servoCurrent.degrees)
         self.RequestDegree.setText(str(degree))
 
         self.minComment.setText(" " + servoStatic.minComment + " ")
@@ -642,7 +666,7 @@ class SkeletonGui(QMainWindow):
         self.maxComment.setGeometry(rect)
 
 
-        self.updateGui(config.SERVO_UPDATE, servoDerived.servoUniqueId)
+        self.updateGuiServo(servoName)
 
 
     def updateGuiArduino(self, arduino):
@@ -676,11 +700,11 @@ class SkeletonGui(QMainWindow):
 
     def updateGuiServo(self, servoName):
 
-        servoCurrent = config.servoCurrentDict[servoName]
+        servoCurrent = config.md.servoCurrentDict.get(servoName)
 
         # build the sliderName for the servo
         sliderName = servoName.replace(".", "_") + "Slider"
-        #config.log(f"update slider: {sliderName}, position: {curr.position}")
+        #config.log(f"update slider: {sliderName}, position: {servoCurrent.position}")
         try:
             s = getattr(self, sliderName)
             # prevent trigger of "on_value_changed" event by blocking events when updating

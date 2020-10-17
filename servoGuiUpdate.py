@@ -1,16 +1,16 @@
 
 import time
 
-from PyQt5 import QtCore
 from PyQt5.QtCore import QObject, pyqtSignal, QRunnable, pyqtSlot
 
 import config
-
+import marvinglobal.marvinglobal as mg
 
 # work on update messages of servos
-
+# these functions can be used to emit a GUI update
+# the functions called by the emit are defined in the init section of the of the SkeletonGui class
 class GuiUpdateSignals(QObject):
-    updateServo = pyqtSignal(str)
+    updateServo = pyqtSignal(str)       # calls updateGuiServo
     updateArduino = pyqtSignal(int)
     updateProcess = pyqtSignal(str)
 
@@ -42,8 +42,15 @@ class GuiUpdateThread(QRunnable):
             #time.sleep(0.01)
             #if guiUpdateQueue.empty():
             #    continue
-
-            guiUpdateData = config.guiUpdateQueue.get()
+            try:
+                guiUpdateData = config.md.guiUpdateQueue.get()
+            except:
+                # shared queue access broken
+                # retry connection with shared dict
+                config.md = mg.MarvinGlobal()
+                if not config.md.connect():
+                    time.sleep(1)
+                    continue
 
             if guiUpdateData is not None:
 
@@ -63,7 +70,7 @@ class GuiUpdateThread(QRunnable):
                     # as the servo current values are in the shared dict we only need to
                     # specify which servo to update in the gui
                     #Data = {'type', 'assigned', 'moving', 'detached', 'position', 'degree'}
-                    #servoStatic: config.ServoStatic = config.servoStaticDict[servoName]
+                    #servoStatic: config.ServoStatic = config.md.servoStaticDict.get(servoName)
                     #servoDerived = config.servoDerivedDict[servoName]
 
                     #if servoStatic is None:
@@ -78,14 +85,13 @@ class GuiUpdateThread(QRunnable):
 
                     # inform the gui about the changed servo information using the unique servoId
                     #self.signals.update.emit(config.SERVO_UPDATE, servoDerived.servoUniqueId)
+                    config.log(f"signal servoUpdate for {servoName}")
                     self.signals.updateServo.emit(servoName)
 
 
                 #elif guiUpdateData['type'] == config.ARDUINO_UPDATE:
                 elif type == "arduinoUpdate":
-                    config.log("emit arduino update")
-                        #if guiUpdateData['connected']:
-                        #    self.signals.update.emit(config.ARDUINO_UPDATE, guiUpdateData['arduino'])
+                    config.log(f"emit arduino update {guiUpdateData}")
                     arduino = guiUpdateData['arduino']
                     self.signals.updateArduino.emit(arduino)
 
